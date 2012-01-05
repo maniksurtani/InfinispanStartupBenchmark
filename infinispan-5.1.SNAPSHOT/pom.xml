@@ -35,7 +35,8 @@
                </execution>
             </executions>
             <configuration>
-               <mainClass>org.infinispan.benchmark.StartupSpeedTest</mainClass>
+               <!--<mainClass>org.infinispan.benchmark.StartupSpeedTest</mainClass>-->
+               <mainClass>org.infinispan.benchmark.Transactional</mainClass>
             </configuration>
          </plugin>
       </plugins>
