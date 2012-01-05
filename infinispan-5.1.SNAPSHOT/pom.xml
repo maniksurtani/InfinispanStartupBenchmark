@@ -5,7 +5,7 @@
    <modelVersion>4.0.0</modelVersion>
 
    <groupId>org.infinispan.benchmark</groupId>
-   <artifactId>startup-benchmark-fwk-5.1.S</artifactId>
+   <artifactId>startup-benchmark-fwk-5.1.SNAPSHOT</artifactId>
    <version>1.0</version>
 
    <dependencies>
@@ -20,25 +20,59 @@
          <version>1.0</version>
       </dependency>
    </dependencies>
-   <build>
-      <plugins>
-         <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>exec-maven-plugin</artifactId>
-            <version>1.1</version>
-            <executions>
-               <execution>
-                  <phase>process-classes</phase>
-                  <goals>
-                     <goal>java</goal>
-                  </goals>
-               </execution>
-            </executions>
-            <configuration>
-               <!--<mainClass>org.infinispan.benchmark.StartupSpeedTest</mainClass>-->
-               <mainClass>org.infinispan.benchmark.Transactional</mainClass>
-            </configuration>
-         </plugin>
-      </plugins>
-   </build>
+   <profiles>
+      <profile>
+         <id>StartupTest</id>
+         <activation>
+            <activeByDefault>false</activeByDefault>
+         </activation>
+         <build>
+            <plugins>
+               <plugin>
+                  <groupId>org.codehaus.mojo</groupId>
+                  <artifactId>exec-maven-plugin</artifactId>
+                  <version>1.1</version>
+                  <executions>
+                     <execution>
+                        <phase>process-classes</phase>
+                        <goals>
+                           <goal>java</goal>
+                        </goals>
+                     </execution>
+                  </executions>
+                  <configuration>
+                     <mainClass>org.infinispan.benchmark.StartupSpeedTest</mainClass>
+                  </configuration>
+               </plugin>
+            </plugins>
+         </build>
+      </profile>
+
+      <profile>
+         <id>ClusteredTest</id>
+         <activation>
+            <activeByDefault>false</activeByDefault>
+         </activation>
+         <build>
+            <plugins>
+               <plugin>
+                  <groupId>org.codehaus.mojo</groupId>
+                  <artifactId>exec-maven-plugin</artifactId>
+                  <version>1.1</version>
+                  <executions>
+                     <execution>
+                        <phase>process-classes</phase>
+                        <goals>
+                           <goal>java</goal>
+                        </goals>
+                     </execution>
+                  </executions>
+                  <configuration>
+                     <mainClass>org.infinispan.benchmark.Transactional</mainClass>
+                  </configuration>
+               </plugin>
+            </plugins>
+         </build>
+      </profile>
+   </profiles>
 </project>
