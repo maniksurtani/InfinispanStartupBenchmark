@@ -26,13 +26,15 @@ import java.util.concurrent.atomic.AtomicLong;
 public class Transactional {
    // ******* CONSTANTS *******
    final static int PAYLOAD_SIZE = 10240; // 10k
-   final static int NUM_KEYS = 200;
+   final static int NUM_KEYS = 100;
    final static boolean USE_TX = true;
-   static final List<String> KEYS;
+   static final List<String> KEYS_W1;
+   static final List<String> KEYS_W2;
+   static final List<String> KEYS_R;
    static final Random RANDOM = new Random();
    static final int WRITE_PERCENTAGE = 20;
-   static final int WARMUP_LOOPS = 10000;
-   static final int BENCHMARK_LOOPS = 100000;
+   static final int WARMUP_LOOPS = 100000;
+   static final int BENCHMARK_LOOPS = 500000;
    static final int NUM_THREADS = 50;
 
    private AtomicLong numWrites = new AtomicLong(0);
@@ -45,8 +47,17 @@ public class Transactional {
       System.setProperty("jgroups.bind_addr", "127.0.0.1");
       System.setProperty("java.net.preferIPv4Stack", "true");
 
-      KEYS = new ArrayList<String>(NUM_KEYS);
-      for (int i = 0; i < NUM_KEYS; i++) KEYS.add("KEY-" + i);
+      KEYS_W1 = new ArrayList<String>(NUM_KEYS);
+      KEYS_W2 = new ArrayList<String>(NUM_KEYS);
+      KEYS_R = new ArrayList<String>(NUM_KEYS * 2);
+      
+      for (int i = 0; i < NUM_KEYS; i++) {
+         KEYS_W1.add("KEY-N1-" + i);
+         KEYS_W2.add("KEY-N2-" + i);
+         KEYS_R.add("KEY-N1-" + i);
+         KEYS_R.add("KEY-N2-" + i);
+
+      }
    }
 
    EmbeddedCacheManager ecm1;
@@ -82,7 +93,8 @@ public class Transactional {
          while (ecm1.getMembers().size() != 2) Thread.sleep(100);
 
          // populate cache
-         for (String k : KEYS) c1.put(k, generateRandomString(PAYLOAD_SIZE));
+         for (String k : KEYS_W1) c1.put(k, generateRandomString(PAYLOAD_SIZE));
+         for (String k : KEYS_W2) c1.put(k, generateRandomString(PAYLOAD_SIZE));
 
          warmup();
 
@@ -108,8 +120,10 @@ public class Transactional {
       for (int i = 0; i < work.size(); i++) {
          if (work.remove(RANDOM.nextInt(work.size() - 1)) == Mode.READ)
             e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, i, startSignal, false));
-         else
-            e.submit(new Writer(RANDOM.nextBoolean() ? c1 : c2, i, startSignal, false));
+         else {
+            boolean useC1 = RANDOM.nextBoolean();
+            e.submit(new Writer(useC1 ? c1 : c2, i, startSignal, false, useC1 ? KEYS_W1 : KEYS_W2));
+         }
       }
       long start = System.nanoTime();
       startSignal.countDown();
@@ -127,9 +141,9 @@ public class Transactional {
 
       // Warmup
       for (int i = 0; i < WARMUP_LOOPS / 4; i++) {
-         e.submit(new Writer(c1, i, startSignal, true));
+         e.submit(new Writer(c1, i, startSignal, true, KEYS_W1));
          e.submit(new Reader(c1, i, startSignal, true));
-         e.submit(new Writer(c2, i, startSignal, true));
+         e.submit(new Writer(c2, i, startSignal, true, KEYS_W2));
          e.submit(new Reader(c2, i, startSignal, true));
       }
 
@@ -184,13 +198,15 @@ public class Transactional {
 
    private class Writer extends Worker {
       private final String payload = generateRandomString(PAYLOAD_SIZE);
-      private Writer(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup) {
+      private final List<String> keys;
+      private Writer(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup, List<String> keys) {
          super(cache, idx, startSignal, warmup);
+         this.keys = keys;
          if (!warmup) numWrites.getAndIncrement();
       }
 
       protected void doWork() {
-         cache.put(KEYS.get(RANDOM.nextInt(KEYS.size())), payload);
+         cache.put(keys.get(RANDOM.nextInt(keys.size())), payload);
       }
    }
 
@@ -202,7 +218,7 @@ public class Transactional {
       }
 
       protected void doWork() {
-         cache.get(KEYS.get(RANDOM.nextInt(KEYS.size())));
+         cache.get(KEYS_R.get(RANDOM.nextInt(KEYS_R.size())));
       }
    }
 }
