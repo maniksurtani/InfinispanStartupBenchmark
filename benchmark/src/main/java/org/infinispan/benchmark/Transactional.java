@@ -25,16 +25,16 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class Transactional {
    // ******* CONSTANTS *******
-   final static int PAYLOAD_SIZE = 10240; // 10k
+   final static int PAYLOAD_SIZE = 1024; // 10k
    final static int NUM_KEYS = 100;
    final static boolean USE_TX = true;
    static final List<String> KEYS_W1;
    static final List<String> KEYS_W2;
    static final List<String> KEYS_R;
    static final Random RANDOM = new Random();
-   static final int WRITE_PERCENTAGE = 20;
-   static final int WARMUP_LOOPS = 100000;
-   static final int BENCHMARK_LOOPS = 500000;
+   static final int WRITE_PERCENTAGE = 10;
+   static final int WARMUP_LOOPS = 10000;
+   static final int BENCHMARK_LOOPS = 100000;
    static final int NUM_THREADS = 50;
 
    private AtomicLong numWrites = new AtomicLong(0);
