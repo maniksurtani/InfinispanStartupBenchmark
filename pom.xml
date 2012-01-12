@@ -10,6 +10,7 @@
    <packaging>pom</packaging>
 
    <modules>
+      <module>common-parent</module>
       <module>benchmark</module>
       <module>infinispan-4.2</module>
       <module>infinispan-5.0</module>
