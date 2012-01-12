@@ -75,11 +75,13 @@ public class Transactional {
                .transaction()
                .transactionManagerLookup(new DummyTransactionManagerLookup())
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
+               .sync().replTimeout(60000L)
                .stateRetrieval().fetchInMemoryState(false);
       } else {
          cfg.fluent()
                .locking().lockAcquisitionTimeout(60000L)
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
+               .sync().replTimeout(60000L)
                .stateRetrieval().fetchInMemoryState(false);
       }
 
