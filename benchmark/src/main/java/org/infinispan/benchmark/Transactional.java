@@ -72,6 +72,7 @@ public class Transactional {
       if (USE_TX) {
          cfg.fluent()
                .locking().lockAcquisitionTimeout(60000L).useLockStriping(false)
+               .concurrencyLevel(NUM_THREADS * 4)
                .transaction()
                .transactionManagerLookup(new DummyTransactionManagerLookup())
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
@@ -80,6 +81,7 @@ public class Transactional {
       } else {
          cfg.fluent()
                .locking().lockAcquisitionTimeout(60000L).useLockStriping(false)
+               .concurrencyLevel(NUM_THREADS * 4)
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
                .sync().replTimeout(60000L)
                .stateRetrieval().fetchInMemoryState(false);
