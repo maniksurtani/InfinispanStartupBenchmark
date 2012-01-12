@@ -1,12 +1,11 @@
 package org.infinispan.benchmark;
 
-import com.arjuna.ats.arjuna.common.arjPropertyManager;
 import org.infinispan.Cache;
 import org.infinispan.config.Configuration;
 import org.infinispan.config.GlobalConfiguration;
 import org.infinispan.manager.DefaultCacheManager;
 import org.infinispan.manager.EmbeddedCacheManager;
-import org.infinispan.transaction.lookup.JBossStandaloneJTAManagerLookup;
+import org.infinispan.transaction.lookup.DummyTransactionManagerLookup;
 import org.infinispan.util.Util;
 
 import javax.transaction.TransactionManager;
@@ -25,25 +24,22 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class Transactional {
    // ******* CONSTANTS *******
-   final static int PAYLOAD_SIZE = 1024; // 10k
-   final static int NUM_KEYS = 100;
-   final static boolean USE_TX = true;
+   final static int PAYLOAD_SIZE = Integer.getInteger("bench.payloadsize", 10240);
+   final static int NUM_KEYS = Integer.getInteger("bench.numkeys", 100);
+   final static boolean USE_TX = Boolean.getBoolean("bench.transactional");
    static final List<String> KEYS_W1;
    static final List<String> KEYS_W2;
    static final List<String> KEYS_R;
    static final Random RANDOM = new Random();
-   static final int WRITE_PERCENTAGE = 10;
-   static final int WARMUP_LOOPS = 10000;
-   static final int BENCHMARK_LOOPS = 100000;
-   static final int NUM_THREADS = 50;
+   static final int WRITE_PERCENTAGE = Integer.getInteger("bench.writepercent", 10);
+   static final int WARMUP_LOOPS = Integer.getInteger("bench.warmup", 100000);
+   static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
+   static final int NUM_THREADS = Integer.getInteger("bench.threads", 50);
 
    private AtomicLong numWrites = new AtomicLong(0);
    private AtomicLong numReads = new AtomicLong(0);
 
    static {
-      arjPropertyManager.getCoordinatorEnvironmentBean().setCommunicationStore(com.arjuna.ats.internal.arjuna.objectstore.VolatileStore.class.getName());
-      arjPropertyManager.getObjectStoreEnvironmentBean().setObjectStoreType(com.arjuna.ats.internal.arjuna.objectstore.VolatileStore.class.getName());
-
       System.setProperty("jgroups.bind_addr", "127.0.0.1");
       System.setProperty("java.net.preferIPv4Stack", "true");
 
@@ -77,7 +73,7 @@ public class Transactional {
          cfg.fluent()
                .locking().lockAcquisitionTimeout(60000L)
                .transaction()
-               .transactionManagerLookup(new JBossStandaloneJTAManagerLookup())
+               .transactionManagerLookup(new DummyTransactionManagerLookup())
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
                .stateRetrieval().fetchInMemoryState(false);
       } else {
@@ -181,7 +177,7 @@ public class Transactional {
 
       @Override
       public Void call() throws Exception {
-         if (!warmup && idx % 1000 == 0) System.out.println(idx + " calls processed");
+         if (!warmup && idx % 5000 == 0) System.out.println(idx + " calls processed");
          startSignal.await();
          if (USE_TX) {
             tm.begin();
