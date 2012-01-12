@@ -5,14 +5,14 @@
    <modelVersion>4.0.0</modelVersion>
 
    <groupId>org.infinispan.benchmark</groupId>
-   <artifactId>startup-benchmark-fwk-5.1.CR2</artifactId>
+   <artifactId>startup-benchmark-fwk-5.1.CR3</artifactId>
    <version>1.0</version>
 
    <dependencies>
       <dependency>
          <groupId>org.infinispan</groupId>
          <artifactId>infinispan-core</artifactId>
-         <version>5.1.0.CR2</version>
+         <version>5.1.0.CR3</version>
       </dependency>
       <dependency>
          <groupId>org.infinispan.benchmark</groupId>
