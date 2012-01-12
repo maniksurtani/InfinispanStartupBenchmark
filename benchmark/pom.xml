@@ -24,34 +24,12 @@
          <version>5.0.1.FINAL</version>
          <!--<version>5.1.0.CR3</version>-->
          <!--<version>5.1.0-SNAPSHOT</version>-->
-         <scope>provided</scope>
-         <exclusions>
-            <exclusion>
-               <groupId>org.jboss.logging</groupId>
-               <artifactId>jboss-logging-spi</artifactId>
-            </exclusion>
-         </exclusions>
+         <!--<scope>provided</scope>-->
       </dependency>
       <dependency>
          <groupId>log4j</groupId>
          <artifactId>log4j</artifactId>
          <version>1.2.16</version>
-      </dependency>
-      <dependency>
-         <groupId>org.jboss.jbossts</groupId>
-         <artifactId>jbossjta</artifactId>
-         <version>4.16.0.Final</version>
-         <exclusions>
-            <exclusion>
-               <groupId>org.jboss.logging</groupId>
-               <artifactId>jboss-logging-spi</artifactId>
-            </exclusion>
-         </exclusions>
-      </dependency>
-      <dependency>
-         <groupId>org.jboss.logging</groupId>
-         <artifactId>jboss-logging</artifactId>
-         <version>3.1.0.CR2</version>
       </dependency>
    </dependencies>
 </project>
