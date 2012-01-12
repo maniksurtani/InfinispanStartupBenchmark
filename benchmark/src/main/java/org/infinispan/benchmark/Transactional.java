@@ -33,9 +33,9 @@ public class Transactional {
    static final List<String> KEYS_R;
    static final Random RANDOM = new Random();
    static final int WRITE_PERCENTAGE = 10;
-   static final int WARMUP_LOOPS = 100000;
-   static final int BENCHMARK_LOOPS = 500000;
-   static final int NUM_THREADS = 250;
+   static final int WARMUP_LOOPS = 10000;
+   static final int BENCHMARK_LOOPS = 100000;
+   static final int NUM_THREADS = 50;
 
    private AtomicLong numWrites = new AtomicLong(0);
    private AtomicLong numReads = new AtomicLong(0);
@@ -78,11 +78,13 @@ public class Transactional {
                .locking().lockAcquisitionTimeout(60000L)
                .transaction()
                .transactionManagerLookup(new JBossStandaloneJTAManagerLookup())
-               .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC);
+               .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
+               .stateRetrieval().fetchInMemoryState(false);
       } else {
          cfg.fluent()
                .locking().lockAcquisitionTimeout(60000L)
-               .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC);
+               .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
+               .stateRetrieval().fetchInMemoryState(false);
       }
 
       ecm1 = new DefaultCacheManager(GlobalConfiguration.getClusteredDefault(), cfg);
