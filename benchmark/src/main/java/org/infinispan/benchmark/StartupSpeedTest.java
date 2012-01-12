@@ -55,7 +55,7 @@ public class StartupSpeedTest {
       System.out.printf("   Created %s caches in %s and consumed %s of memory.%n%n", LOOP_SIZE, Util.prettyPrintTime(nanos, TimeUnit.NANOSECONDS), format(mem0));
    }
    
-   private static final String format(long bytes) {
+   public static final String format(long bytes) {
       double val = bytes;
       int mag = 0;
       while (val > 1024) {

@@ -15,8 +15,9 @@
          <groupId>org.infinispan</groupId>
          <artifactId>infinispan-core</artifactId>
          <version>5.0.1.FINAL</version>
+         <!--<version>5.1.0.CR3</version>-->
          <!--<version>5.1.0-SNAPSHOT</version>-->
-         <!--<scope>provided</scope>-->
+         <scope>provided</scope>
          <exclusions>
             <exclusion>
                <groupId>org.jboss.logging</groupId>
