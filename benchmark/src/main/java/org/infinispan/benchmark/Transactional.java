@@ -71,7 +71,7 @@ public class Transactional {
 
       if (USE_TX) {
          cfg.fluent()
-               .locking().lockAcquisitionTimeout(60000L)
+               .locking().lockAcquisitionTimeout(60000L).useLockStriping(false)
                .transaction()
                .transactionManagerLookup(new DummyTransactionManagerLookup())
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
@@ -79,7 +79,7 @@ public class Transactional {
                .stateRetrieval().fetchInMemoryState(false);
       } else {
          cfg.fluent()
-               .locking().lockAcquisitionTimeout(60000L)
+               .locking().lockAcquisitionTimeout(60000L).useLockStriping(false)
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
                .sync().replTimeout(60000L)
                .stateRetrieval().fetchInMemoryState(false);
