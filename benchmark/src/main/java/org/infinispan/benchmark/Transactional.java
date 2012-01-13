@@ -27,7 +27,7 @@ public class Transactional {
    final static boolean USE_TX = Boolean.getBoolean("bench.transactional");
    static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
    static final int READER_PER_WRITER = Integer.getInteger("bench.readersPerWriter", 3);
-   static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000);
+   static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
    static final int NUM_THREADS = Integer.getInteger("bench.threads", 50);
    private static final boolean RUN_FOREVER = Boolean.getBoolean("bench.runForever");
 
@@ -176,7 +176,7 @@ public class Transactional {
             } catch (Exception e) {
                if (USE_TX) tm.rollback();
             }
-         } while (RUN_FOREVER || BENCHMARK_LOOPS == loop);
+         } while (RUN_FOREVER || BENCHMARK_LOOPS != loop);
          return null;
       }
 
