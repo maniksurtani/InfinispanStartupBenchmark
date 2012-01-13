@@ -12,8 +12,6 @@ import javax.transaction.TransactionManager;
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -27,14 +25,15 @@ public class Transactional {
    final static int PAYLOAD_SIZE = Integer.getInteger("bench.payloadsize", 10240);
    final static int NUM_KEYS = Integer.getInteger("bench.numkeys", 100);
    final static boolean USE_TX = Boolean.getBoolean("bench.transactional");
-   static final List<String> KEYS_W1;
-   static final List<String> KEYS_W2;
-   static final List<String> KEYS_R;
    static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
    static final int WRITE_PERCENTAGE = Integer.getInteger("bench.writepercent", 10);
    static final int WARMUP_LOOPS = Integer.getInteger("bench.warmup", 100000);
    static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
    static final int NUM_THREADS = Integer.getInteger("bench.threads", 50);
+
+   static final String[] KEYS_W1 = new String[NUM_KEYS];
+   static final String[] KEYS_W2 = new String[NUM_KEYS];
+   static final String[] KEYS_R = new String[NUM_KEYS*2];
 
    private static final AtomicLong numWrites = new AtomicLong(0);
    private static final AtomicLong numReads = new AtomicLong(0);
@@ -43,16 +42,13 @@ public class Transactional {
       System.setProperty("jgroups.bind_addr", "127.0.0.1");
       System.setProperty("java.net.preferIPv4Stack", "true");
 
-      KEYS_W1 = new ArrayList<String>(NUM_KEYS);
-      KEYS_W2 = new ArrayList<String>(NUM_KEYS);
-      KEYS_R = new ArrayList<String>(NUM_KEYS * 2);
-      
       for (int i = 0; i < NUM_KEYS; i++) {
-         KEYS_W1.add("KEY-N1-" + i);
-         KEYS_W2.add("KEY-N2-" + i);
-         KEYS_R.add("KEY-N1-" + i);
-         KEYS_R.add("KEY-N2-" + i);
-
+         KEYS_W1[i] = "KEY-N1-" + i;
+         KEYS_W2[i] = "KEY-N2-" + i;
+         KEYS_R[i] = "KEY-N1-" + i;
+      }
+      for (int i = NUM_KEYS; i < NUM_KEYS*2; i++) {
+         KEYS_R[i] = "KEY-N2-" + i;
       }
    }
 
@@ -200,15 +196,15 @@ public class Transactional {
 
    private static final class Writer extends Worker {
       private final String payload = generateRandomString(PAYLOAD_SIZE);
-      private final List<String> keys;
-      private Writer(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup, List<String> keys) {
+      private final String[] keys;
+      private Writer(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup, String[] keys) {
          super(cache, idx, startSignal, warmup);
          this.keys = keys;
          if (!warmup) numWrites.getAndIncrement();
       }
 
       protected final void doWork() {
-         cache.put(keys.get(RANDOM.nextInt(keys.size())), payload);
+         cache.put(keys[RANDOM.nextInt(keys.length)], payload);
       }
    }
 
@@ -220,7 +216,7 @@ public class Transactional {
       }
 
       protected final void doWork() {
-         cache.get(KEYS_R.get(RANDOM.nextInt(KEYS_R.size())));
+         cache.get(KEYS_R[RANDOM.nextInt(KEYS_R.length)]);
       }
    }
 }
