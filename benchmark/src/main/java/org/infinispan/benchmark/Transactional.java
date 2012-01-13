@@ -27,7 +27,6 @@ public class Transactional {
    final static boolean USE_TX = Boolean.getBoolean("bench.transactional");
    static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
    static final int WRITE_PERCENTAGE = Integer.getInteger("bench.writepercent", 10);
-   static final int WARMUP_LOOPS = Integer.getInteger("bench.warmup", 100000);
    static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
    static final int NUM_THREADS = Integer.getInteger("bench.threads", 50);
    private static final boolean RUN_FOREVER = Boolean.getBoolean("bench.runForever");
@@ -115,11 +114,11 @@ public class Transactional {
       for (int i=0; i<writeCount; i++) {
          //Add a writer
          boolean useC1 = RANDOM.nextBoolean();
-         e.submit(new Writer(useC1 ? c1 : c2, i, startSignal, false, useC1 ? KEYS_W1 : KEYS_W2));
+         e.submit(new Writer(useC1 ? c1 : c2, i, startSignal, useC1 ? KEYS_W1 : KEYS_W2));
       }
       for (int i=0; i<BENCHMARK_LOOPS - writeCount; i++) {
          //Add a reader
-         e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, i, startSignal, false));
+         e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, i, startSignal));
       }
 
       startSignal.countDown();
@@ -148,21 +147,19 @@ public class Transactional {
       final CountDownLatch startSignal;
       final Cache<String, String> cache;
       final TransactionManager tm;
-      final boolean warmup;
 
-      private Worker(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup) {
+      private Worker(Cache<String, String> cache, int idx, CountDownLatch startSignal) {
          this.idx = idx;
          this.startSignal = startSignal;
          this.cache = cache;
          this.tm = cache.getAdvancedCache().getTransactionManager();
-         this.warmup = warmup;
       }
 
       @Override
       public final Void call() throws Exception {
          startSignal.await();
          do {
-            if (!warmup && idx % 5000 == 0) System.out.println(idx + " calls processed");
+            if (idx % 5000 == 0) System.out.println(idx + " calls processed");
             if (USE_TX) {
                tm.begin();
                // Force 2PC
@@ -184,26 +181,26 @@ public class Transactional {
    private static final class Writer extends Worker {
       private final String payload = generateRandomString(PAYLOAD_SIZE);
       private final String[] keys;
-      private Writer(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup, String[] keys) {
-         super(cache, idx, startSignal, warmup);
+      private Writer(Cache<String, String> cache, int idx, CountDownLatch startSignal, String[] keys) {
+         super(cache, idx, startSignal);
          this.keys = keys;
-         if (!warmup) numWrites.getAndIncrement();
       }
 
       protected final void doWork() {
          cache.put(keys[RANDOM.nextInt(keys.length)], payload);
+         numWrites.getAndIncrement();
       }
    }
 
    private static final class Reader extends Worker {
 
-      private Reader(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup) {
-         super(cache, idx, startSignal, warmup);
-         if (!warmup) numReads.getAndIncrement();
+      private Reader(Cache<String, String> cache, int idx, CountDownLatch startSignal) {
+         super(cache, idx, startSignal);
       }
 
       protected final void doWork() {
          cache.get(KEYS_R[RANDOM.nextInt(KEYS_R.length)]);
+         numReads.getAndIncrement();
       }
    }
 }
