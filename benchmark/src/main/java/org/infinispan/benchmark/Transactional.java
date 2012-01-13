@@ -36,8 +36,8 @@ public class Transactional {
    static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
    static final int NUM_THREADS = Integer.getInteger("bench.threads", 50);
 
-   private AtomicLong numWrites = new AtomicLong(0);
-   private AtomicLong numReads = new AtomicLong(0);
+   private static final AtomicLong numWrites = new AtomicLong(0);
+   private static final AtomicLong numReads = new AtomicLong(0);
 
    static {
       System.setProperty("jgroups.bind_addr", "127.0.0.1");
@@ -164,7 +164,7 @@ public class Transactional {
       return sb.toString();
    }
 
-   private abstract class Worker implements Callable<Void> {
+   private static abstract class Worker implements Callable<Void> {
       final int idx;
       final CountDownLatch startSignal;
       final Cache<String, String> cache;
@@ -180,7 +180,7 @@ public class Transactional {
       }
 
       @Override
-      public Void call() throws Exception {
+      public final Void call() throws Exception {
          if (!warmup && idx % 5000 == 0) System.out.println(idx + " calls processed");
          startSignal.await();
          if (USE_TX) {
@@ -200,7 +200,7 @@ public class Transactional {
       protected abstract void doWork();
    }
 
-   private class Writer extends Worker {
+   private static final class Writer extends Worker {
       private final String payload = generateRandomString(PAYLOAD_SIZE);
       private final List<String> keys;
       private Writer(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup, List<String> keys) {
@@ -209,19 +209,19 @@ public class Transactional {
          if (!warmup) numWrites.getAndIncrement();
       }
 
-      protected void doWork() {
+      protected final void doWork() {
          cache.put(keys.get(RANDOM.nextInt(keys.size())), payload);
       }
    }
 
-   private class Reader extends Worker {
+   private static final class Reader extends Worker {
 
       private Reader(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup) {
          super(cache, idx, startSignal, warmup);
          if (!warmup) numReads.getAndIncrement();
       }
 
-      protected void doWork() {
+      protected final void doWork() {
          cache.get(KEYS_R.get(RANDOM.nextInt(KEYS_R.size())));
       }
    }
