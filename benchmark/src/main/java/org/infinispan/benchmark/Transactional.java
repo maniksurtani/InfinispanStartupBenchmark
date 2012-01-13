@@ -26,8 +26,8 @@ public class Transactional {
    final static int NUM_KEYS = Integer.getInteger("bench.numkeys", 100);
    final static boolean USE_TX = Boolean.getBoolean("bench.transactional");
    static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
-   static final int WRITE_PERCENTAGE = Integer.getInteger("bench.writepercent", 10);
-   static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
+   static final int READER_PER_WRITER = Integer.getInteger("bench.readersPerWriter", 3);
+   static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000);
    static final int NUM_THREADS = Integer.getInteger("bench.threads", 50);
    private static final boolean RUN_FOREVER = Boolean.getBoolean("bench.runForever");
 
@@ -108,15 +108,16 @@ public class Transactional {
       final CountDownLatch startSignal = new CountDownLatch(1);
       ExecutorService e = Executors.newFixedThreadPool(NUM_THREADS);
 
-      int writeCount = (int) (((double) WRITE_PERCENTAGE/100) * BENCHMARK_LOOPS);
-      for (int i=0; i<writeCount; i++) {
-         //Add a writer
-         boolean useC1 = RANDOM.nextBoolean();
-         e.submit(new Writer(useC1 ? c1 : c2, startSignal, useC1 ? KEYS_W1 : KEYS_W2));
-      }
-      for (int i=0; i<BENCHMARK_LOOPS - writeCount; i++) {
-         //Add a reader
-         e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, startSignal));
+      for (int i = 0; i < NUM_THREADS; i++) {
+         if (i % READER_PER_WRITER == 0) {
+            //Add a writer
+            boolean useC1 = RANDOM.nextBoolean();
+            e.submit(new Writer(useC1 ? c1 : c2, startSignal, useC1 ? KEYS_W1 : KEYS_W2));
+         }
+         else {
+            //Add a reader
+            e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, startSignal));
+         }
       }
 
       startSignal.countDown();
@@ -161,7 +162,9 @@ public class Transactional {
       @Override
       public final Void call() throws Exception {
          startSignal.await();
+         int loop = 0;
          do {
+            loop++;
             if (USE_TX) {
                tm.begin();
                // Force 2PC
@@ -173,7 +176,7 @@ public class Transactional {
             } catch (Exception e) {
                if (USE_TX) tm.rollback();
             }
-         } while (RUN_FOREVER);
+         } while (RUN_FOREVER || BENCHMARK_LOOPS == loop);
          return null;
       }
 
@@ -190,7 +193,7 @@ public class Transactional {
 
       protected final void doWork() {
          cache.put(keys[RANDOM.nextInt(keys.length)], payload);
-         long writes = numWrites.getAndIncrement();
+         long writes = numWrites.incrementAndGet();
          if (writes % 1000 == 0) System.out.println(writes + " write operations processed");
       }
    }
@@ -203,7 +206,7 @@ public class Transactional {
 
       protected final void doWork() {
          cache.get(KEYS_R[RANDOM.nextInt(KEYS_R.length)]);
-         long reads = numReads.getAndIncrement();
+         long reads = numReads.incrementAndGet();
          if (reads % 10000 == 0) System.out.println(reads + " read operations processed");
       }
    }
