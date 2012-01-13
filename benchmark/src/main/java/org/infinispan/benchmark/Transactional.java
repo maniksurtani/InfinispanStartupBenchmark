@@ -30,6 +30,7 @@ public class Transactional {
    static final int WARMUP_LOOPS = Integer.getInteger("bench.warmup", 100000);
    static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
    static final int NUM_THREADS = Integer.getInteger("bench.threads", 50);
+   private static final boolean RUN_FOREVER = Boolean.getBoolean("bench.runForever");
 
    static final String[] KEYS_W1 = new String[NUM_KEYS];
    static final String[] KEYS_W2 = new String[NUM_KEYS];
@@ -72,14 +73,14 @@ public class Transactional {
                .transaction()
                .transactionManagerLookup(new DummyTransactionManagerLookup())
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
-               .sync().replTimeout(60000L)
+               .sync().replTimeout(6000L)
                .stateRetrieval().fetchInMemoryState(false);
       } else {
          cfg.fluent()
                .locking().lockAcquisitionTimeout(60000L).useLockStriping(false)
                .concurrencyLevel(NUM_THREADS * 4)
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
-               .sync().replTimeout(60000L)
+               .sync().replTimeout(6000L)
                .stateRetrieval().fetchInMemoryState(false);
       }
 
@@ -175,19 +176,21 @@ public class Transactional {
 
       @Override
       public final Void call() throws Exception {
-         if (!warmup && idx % 5000 == 0) System.out.println(idx + " calls processed");
          startSignal.await();
-         if (USE_TX) {
-            tm.begin();
-            // Force 2PC
-            tm.getTransaction().enlistResource(new XAResourceAdapter());
-         }
-         try {
-            doWork();
-            if (USE_TX) tm.commit();
-         } catch (Exception e) {
-            if (USE_TX) tm.rollback();
-         }
+         do {
+            if (!warmup && idx % 5000 == 0) System.out.println(idx + " calls processed");
+            if (USE_TX) {
+               tm.begin();
+               // Force 2PC
+               tm.getTransaction().enlistResource(new XAResourceAdapter());
+            }
+            try {
+               doWork();
+               if (USE_TX) tm.commit();
+            } catch (Exception e) {
+               if (USE_TX) tm.rollback();
+            }
+         } while (RUN_FOREVER);
          return null;
       }
 
