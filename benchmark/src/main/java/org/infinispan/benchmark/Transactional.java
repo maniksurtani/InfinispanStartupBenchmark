@@ -97,8 +97,6 @@ public class Transactional {
          for (String k : KEYS_W1) c1.put(k, generateRandomString(PAYLOAD_SIZE));
          for (String k : KEYS_W2) c1.put(k, generateRandomString(PAYLOAD_SIZE));
 
-         warmup();
-
          // Now the benchmark
          benchmark();
       } finally {
@@ -124,32 +122,18 @@ public class Transactional {
          e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, i, startSignal, false));
       }
 
-      long start = System.nanoTime();
       startSignal.countDown();
       e.shutdown();
+      //warmup time:
+      Thread.sleep(10000L);
+      //now start measuring:
+      numReads.set(0);
+      numWrites.set(0);
+      long start = System.nanoTime();
       e.awaitTermination(10, TimeUnit.MINUTES);
       long duration = System.nanoTime() - start;
       System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", BENCHMARK_LOOPS, Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), c1.getVersion());
       System.out.printf("  %s reads and %s writes%n", numReads.get(), numWrites.get());
-   }
-
-   private void warmup() throws InterruptedException {
-      System.out.printf("Starting %s warmup loops using %s threads%n", WARMUP_LOOPS, NUM_THREADS);
-      ExecutorService e = Executors.newFixedThreadPool(NUM_THREADS);
-      final CountDownLatch startSignal = new CountDownLatch(1);
-
-      // Warmup
-      for (int i = 0; i < WARMUP_LOOPS / 4; i++) {
-         e.submit(new Writer(c1, i, startSignal, true, KEYS_W1));
-         e.submit(new Reader(c1, i, startSignal, true));
-         e.submit(new Writer(c2, i, startSignal, true, KEYS_W2));
-         e.submit(new Reader(c2, i, startSignal, true));
-      }
-
-      startSignal.countDown();
-      e.shutdown();
-      if (!e.awaitTermination(10, TimeUnit.MINUTES)) System.out.println("STALE WARMUP TASKS!!");
-      System.out.println("Warmup complete.");
    }
 
    public static String generateRandomString(int size) {
