@@ -116,19 +116,17 @@ public class Transactional {
       final CountDownLatch startSignal = new CountDownLatch(1);
       ExecutorService e = Executors.newFixedThreadPool(NUM_THREADS);
 
-      List<Mode> work = new ArrayList<Mode>(BENCHMARK_LOOPS);
       int writeCount = (int) (((double) WRITE_PERCENTAGE/100) * BENCHMARK_LOOPS);
-      for (int i=0; i<writeCount; i++) work.add(Mode.WRITE);
-      for (int i=0; i<BENCHMARK_LOOPS - writeCount; i++) work.add(Mode.READ);
-
-      for (int i = 0; i < work.size(); i++) {
-         if (work.remove(RANDOM.nextInt(work.size() - 1)) == Mode.READ)
-            e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, i, startSignal, false));
-         else {
-            boolean useC1 = RANDOM.nextBoolean();
-            e.submit(new Writer(useC1 ? c1 : c2, i, startSignal, false, useC1 ? KEYS_W1 : KEYS_W2));
-         }
+      for (int i=0; i<writeCount; i++) {
+         //Add a writer
+         boolean useC1 = RANDOM.nextBoolean();
+         e.submit(new Writer(useC1 ? c1 : c2, i, startSignal, false, useC1 ? KEYS_W1 : KEYS_W2));
       }
+      for (int i=0; i<BENCHMARK_LOOPS - writeCount; i++) {
+         //Add a reader
+         e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, i, startSignal, false));
+      }
+
       long start = System.nanoTime();
       startSignal.countDown();
       e.shutdown();
