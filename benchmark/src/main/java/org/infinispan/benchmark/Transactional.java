@@ -104,8 +104,6 @@ public class Transactional {
       }
    }
 
-   private enum Mode {READ, WRITE}
-
    private void benchmark() throws InterruptedException {
       final CountDownLatch startSignal = new CountDownLatch(1);
       ExecutorService e = Executors.newFixedThreadPool(NUM_THREADS);
@@ -114,42 +112,47 @@ public class Transactional {
       for (int i=0; i<writeCount; i++) {
          //Add a writer
          boolean useC1 = RANDOM.nextBoolean();
-         e.submit(new Writer(useC1 ? c1 : c2, i, startSignal, useC1 ? KEYS_W1 : KEYS_W2));
+         e.submit(new Writer(useC1 ? c1 : c2, startSignal, useC1 ? KEYS_W1 : KEYS_W2));
       }
       for (int i=0; i<BENCHMARK_LOOPS - writeCount; i++) {
          //Add a reader
-         e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, i, startSignal));
+         e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, startSignal));
       }
 
       startSignal.countDown();
       e.shutdown();
-      //warmup time:
+      //warmup time, leave the workers alone for some 10 seconds:
       Thread.sleep(10000L);
       //now start measuring:
       numReads.set(0);
       numWrites.set(0);
       long start = System.nanoTime();
-      e.awaitTermination(10, TimeUnit.MINUTES);
+      e.awaitTermination(12, TimeUnit.HOURS);
       long duration = System.nanoTime() - start;
-      System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", BENCHMARK_LOOPS, Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), c1.getVersion());
-      System.out.printf("  %s reads and %s writes%n", numReads.get(), numWrites.get());
+      long reads = numReads.get();
+      long writes = numWrites.get();
+      if ( reads+writes == 0) {
+         System.out.println("Finished too soon: all work finished before the warmup period was terminated.");
+      }
+      else {
+         System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", reads + writes, Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), c1.getVersion());
+         System.out.printf("  %s reads and %s writes%n", reads, writes);
+      }
    }
 
    public static String generateRandomString(int size) {
       // each char is 2 bytes
-      StringBuilder sb = new StringBuilder();
+      StringBuilder sb = new StringBuilder(size);
       for (int i = 0; i < size / 2; i++) sb.append((char) (64 + RANDOM.nextInt(26)));
       return sb.toString();
    }
 
    private static abstract class Worker implements Callable<Void> {
-      final int idx;
       final CountDownLatch startSignal;
       final Cache<String, String> cache;
       final TransactionManager tm;
 
-      private Worker(Cache<String, String> cache, int idx, CountDownLatch startSignal) {
-         this.idx = idx;
+      private Worker(Cache<String, String> cache, CountDownLatch startSignal) {
          this.startSignal = startSignal;
          this.cache = cache;
          this.tm = cache.getAdvancedCache().getTransactionManager();
@@ -159,7 +162,6 @@ public class Transactional {
       public final Void call() throws Exception {
          startSignal.await();
          do {
-            if (idx % 5000 == 0) System.out.println(idx + " calls processed");
             if (USE_TX) {
                tm.begin();
                // Force 2PC
@@ -181,26 +183,28 @@ public class Transactional {
    private static final class Writer extends Worker {
       private final String payload = generateRandomString(PAYLOAD_SIZE);
       private final String[] keys;
-      private Writer(Cache<String, String> cache, int idx, CountDownLatch startSignal, String[] keys) {
-         super(cache, idx, startSignal);
+      private Writer(Cache<String, String> cache, CountDownLatch startSignal, String[] keys) {
+         super(cache, startSignal);
          this.keys = keys;
       }
 
       protected final void doWork() {
          cache.put(keys[RANDOM.nextInt(keys.length)], payload);
-         numWrites.getAndIncrement();
+         long writes = numWrites.getAndIncrement();
+         if (writes % 1000 == 0) System.out.println(writes + " write operations processed");
       }
    }
 
    private static final class Reader extends Worker {
 
-      private Reader(Cache<String, String> cache, int idx, CountDownLatch startSignal) {
-         super(cache, idx, startSignal);
+      private Reader(Cache<String, String> cache, CountDownLatch startSignal) {
+         super(cache, startSignal);
       }
 
       protected final void doWork() {
          cache.get(KEYS_R[RANDOM.nextInt(KEYS_R.length)]);
-         numReads.getAndIncrement();
+         long reads = numReads.getAndIncrement();
+         if (reads % 10000 == 0) System.out.println(reads + " read operations processed");
       }
    }
 }
