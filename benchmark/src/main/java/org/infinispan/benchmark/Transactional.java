@@ -30,7 +30,7 @@ public class Transactional {
    static final List<String> KEYS_W1;
    static final List<String> KEYS_W2;
    static final List<String> KEYS_R;
-   static final Random RANDOM = new Random();
+   static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
    static final int WRITE_PERCENTAGE = Integer.getInteger("bench.writepercent", 10);
    static final int WARMUP_LOOPS = Integer.getInteger("bench.warmup", 100000);
    static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
