@@ -12,47 +12,46 @@ import javax.transaction.TransactionManager;
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class Transactional {
-   // ******* CONSTANTS *******
-   final static int PAYLOAD_SIZE = Integer.getInteger("bench.payloadsize", 10240);
-   final static int NUM_KEYS = Integer.getInteger("bench.numkeys", 100);
-   final static boolean USE_TX = Boolean.getBoolean("bench.transactional");
-   static final List<String> KEYS_W1;
-   static final List<String> KEYS_W2;
-   static final List<String> KEYS_R;
-   static final Random RANDOM = new Random();
-   static final int WRITE_PERCENTAGE = Integer.getInteger("bench.writepercent", 10);
-   static final int WARMUP_LOOPS = Integer.getInteger("bench.warmup", 100000);
-   static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
-   static final int NUM_THREADS = Integer.getInteger("bench.threads", 50);
 
-   private AtomicLong numWrites = new AtomicLong(0);
-   private AtomicLong numReads = new AtomicLong(0);
+   // ******* CONSTANTS *******
+   private static final int PAYLOAD_SIZE = Integer.getInteger("bench.payloadsize", 10240);
+   private static final int NUM_KEYS = Integer.getInteger("bench.numkeys", 100);
+   private static final boolean USE_TX = Boolean.getBoolean("bench.transactional");
+   private static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
+   private static final int READER_THREADS = Integer.getInteger("bench.readerThreads", 100);
+   private static final int WRITER_THREADS = Integer.getInteger("bench.writerThreads", 70);
+   private static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
+
+   private static final int NUM_THREADS = READER_THREADS + WRITER_THREADS;
+   static final String[] KEYS_W1 = new String[NUM_KEYS];
+   static final String[] KEYS_W2 = new String[NUM_KEYS];
+   static final String[] KEYS_R = new String[NUM_KEYS*2];
+
+   private static final AtomicLong numWrites = new AtomicLong(0);
+   private static final AtomicLong numReads = new AtomicLong(0);
+   private static final AtomicBoolean quitWorkers = new AtomicBoolean(false);
 
    static {
       System.setProperty("jgroups.bind_addr", "127.0.0.1");
       System.setProperty("java.net.preferIPv4Stack", "true");
 
-      KEYS_W1 = new ArrayList<String>(NUM_KEYS);
-      KEYS_W2 = new ArrayList<String>(NUM_KEYS);
-      KEYS_R = new ArrayList<String>(NUM_KEYS * 2);
-      
       for (int i = 0; i < NUM_KEYS; i++) {
-         KEYS_W1.add("KEY-N1-" + i);
-         KEYS_W2.add("KEY-N2-" + i);
-         KEYS_R.add("KEY-N1-" + i);
-         KEYS_R.add("KEY-N2-" + i);
-
+         KEYS_W1[i] = "KEY-N1-" + i;
+         KEYS_W2[i] = "KEY-N2-" + i;
+         KEYS_R[i] = "KEY-N1-" + i;
+      }
+      for (int i = NUM_KEYS; i < NUM_KEYS*2; i++) {
+         KEYS_R[i] = "KEY-N2-" + i;
       }
    }
 
@@ -100,8 +99,6 @@ public class Transactional {
          for (String k : KEYS_W1) c1.put(k, generateRandomString(PAYLOAD_SIZE));
          for (String k : KEYS_W2) c1.put(k, generateRandomString(PAYLOAD_SIZE));
 
-         warmup();
-
          // Now the benchmark
          benchmark();
       } finally {
@@ -110,89 +107,85 @@ public class Transactional {
       }
    }
 
-   private enum Mode {READ, WRITE}
-
    private void benchmark() throws InterruptedException {
       final CountDownLatch startSignal = new CountDownLatch(1);
       ExecutorService e = Executors.newFixedThreadPool(NUM_THREADS);
 
-      List<Mode> work = new ArrayList<Mode>(BENCHMARK_LOOPS);
-      int writeCount = (int) (((double) WRITE_PERCENTAGE/100) * BENCHMARK_LOOPS);
-      for (int i=0; i<writeCount; i++) work.add(Mode.WRITE);
-      for (int i=0; i<BENCHMARK_LOOPS - writeCount; i++) work.add(Mode.READ);
-
-      for (int i = 0; i < work.size(); i++) {
-         if (work.remove(RANDOM.nextInt(work.size() - 1)) == Mode.READ)
-            e.submit(new Reader(RANDOM.nextBoolean() ? c1 : c2, i, startSignal, false));
-         else {
-            boolean useC1 = RANDOM.nextBoolean();
-            e.submit(new Writer(useC1 ? c1 : c2, i, startSignal, false, useC1 ? KEYS_W1 : KEYS_W2));
-         }
+      for (int i = 0; i < WRITER_THREADS; i++) {
+         // Add a writer
+         boolean useC1 = RANDOM.nextBoolean();
+         e.submit(new Writer(useC1 ? c1 : c2, startSignal, useC1 ? KEYS_W1 : KEYS_W2));
       }
+      for (int i = 0; i < READER_THREADS; i++) {
+       //Add a reader
+         boolean useC1 = RANDOM.nextBoolean();
+         e.submit(new Reader(useC1 ? c1 : c2, startSignal));
+      }
+
+      startSignal.countDown();
+      e.shutdown();
+      //warmup time, leave the workers alone for some 10 seconds:
+      Thread.sleep(10000L);
+      //now start measuring:
+      numReads.set(0);
+      numWrites.set(0);
       long start = System.nanoTime();
-      startSignal.countDown();
-      e.shutdown();
-      e.awaitTermination(10, TimeUnit.MINUTES);
+      e.awaitTermination(12, TimeUnit.HOURS);
       long duration = System.nanoTime() - start;
-      System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", BENCHMARK_LOOPS, Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), c1.getVersion());
-      System.out.printf("  %s reads and %s writes%n", numReads.get(), numWrites.get());
-   }
-
-   private void warmup() throws InterruptedException {
-      System.out.printf("Starting %s warmup loops using %s threads%n", WARMUP_LOOPS, NUM_THREADS);
-      ExecutorService e = Executors.newFixedThreadPool(NUM_THREADS);
-      final CountDownLatch startSignal = new CountDownLatch(1);
-
-      // Warmup
-      for (int i = 0; i < WARMUP_LOOPS / 4; i++) {
-         e.submit(new Writer(c1, i, startSignal, true, KEYS_W1));
-         e.submit(new Reader(c1, i, startSignal, true));
-         e.submit(new Writer(c2, i, startSignal, true, KEYS_W2));
-         e.submit(new Reader(c2, i, startSignal, true));
+      long reads = numReads.get();
+      long writes = numWrites.get();
+      if ( reads+writes == 0) {
+         System.out.println("Finished too soon: all work finished before the warmup period was terminated; nothing left to do during the benchmark phase! set an higher number of loops.");
       }
-
-      startSignal.countDown();
-      e.shutdown();
-      if (!e.awaitTermination(10, TimeUnit.MINUTES)) System.out.println("STALE WARMUP TASKS!!");
-      System.out.println("Warmup complete.");
+      else {
+         System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", reads + writes, Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), c1.getVersion());
+         System.out.printf("  %s reads and %s writes%n", reads, writes);
+         System.out.printf("  Reads / second: %s%n", (reads * 1000 * 1000 * 1000) / duration );
+         System.out.printf("  Writes/ second: %s%n", (writes * 1000 * 1000 * 1000) / duration );
+      }
    }
 
    public static String generateRandomString(int size) {
       // each char is 2 bytes
-      StringBuilder sb = new StringBuilder();
+      StringBuilder sb = new StringBuilder(size);
       for (int i = 0; i < size / 2; i++) sb.append((char) (64 + RANDOM.nextInt(26)));
       return sb.toString();
    }
 
-   private abstract class Worker implements Callable<Void> {
-      final int idx;
+   private static abstract class Worker implements Callable<Void> {
       final CountDownLatch startSignal;
       final Cache<String, String> cache;
       final TransactionManager tm;
-      final boolean warmup;
 
-      private Worker(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup) {
-         this.idx = idx;
+      private Worker(Cache<String, String> cache, CountDownLatch startSignal) {
          this.startSignal = startSignal;
          this.cache = cache;
          this.tm = cache.getAdvancedCache().getTransactionManager();
-         this.warmup = warmup;
       }
 
       @Override
-      public Void call() throws Exception {
-         if (!warmup && idx % 5000 == 0) System.out.println(idx + " calls processed");
+      public final Void call() throws Exception {
          startSignal.await();
-         if (USE_TX) {
-            tm.begin();
-            // Force 2PC
-            tm.getTransaction().enlistResource(new XAResourceAdapter());
-         }
+         int loop = 0;
          try {
-            doWork();
-            if (USE_TX) tm.commit();
-         } catch (Exception e) {
-            if (USE_TX) tm.rollback();
+            do {
+               loop++;
+               if (USE_TX) {
+                  tm.begin();
+                  // Force 2PC
+                  tm.getTransaction().enlistResource(new XAResourceAdapter());
+               }
+               try {
+                  doWork();
+                  if (USE_TX) tm.commit();
+               } catch (Exception e) {
+                  if (USE_TX) tm.rollback();
+               }
+            } while (BENCHMARK_LOOPS != loop && ! quitWorkers.get());
+         }
+         finally {
+            //when one worked finishes, the others should quite as well to keep the measured situation constant.
+            quitWorkers.set(true);
          }
          return null;
       }
@@ -200,29 +193,31 @@ public class Transactional {
       protected abstract void doWork();
    }
 
-   private class Writer extends Worker {
+   private static final class Writer extends Worker {
       private final String payload = generateRandomString(PAYLOAD_SIZE);
-      private final List<String> keys;
-      private Writer(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup, List<String> keys) {
-         super(cache, idx, startSignal, warmup);
+      private final String[] keys;
+      private Writer(Cache<String, String> cache, CountDownLatch startSignal, String[] keys) {
+         super(cache, startSignal);
          this.keys = keys;
-         if (!warmup) numWrites.getAndIncrement();
       }
 
-      protected void doWork() {
-         cache.put(keys.get(RANDOM.nextInt(keys.size())), payload);
+      protected final void doWork() {
+         cache.put(keys[RANDOM.nextInt(keys.length)], payload);
+         long writes = numWrites.incrementAndGet();
+         if (writes % 100000 == 0) System.out.println(writes + " write operations processed");
       }
    }
 
-   private class Reader extends Worker {
+   private static final class Reader extends Worker {
 
-      private Reader(Cache<String, String> cache, int idx, CountDownLatch startSignal, boolean warmup) {
-         super(cache, idx, startSignal, warmup);
-         if (!warmup) numReads.getAndIncrement();
+      private Reader(Cache<String, String> cache, CountDownLatch startSignal) {
+         super(cache, startSignal);
       }
 
-      protected void doWork() {
-         cache.get(KEYS_R.get(RANDOM.nextInt(KEYS_R.size())));
+      protected final void doWork() {
+         cache.get(KEYS_R[RANDOM.nextInt(KEYS_R.length)]);
+         long reads = numReads.incrementAndGet();
+         if (reads % 1000000 == 0) System.out.println(reads + " read operations processed");
       }
    }
 }
