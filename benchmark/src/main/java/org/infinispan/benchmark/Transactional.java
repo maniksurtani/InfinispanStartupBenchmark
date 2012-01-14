@@ -28,6 +28,7 @@ public class Transactional {
    private static final int PAYLOAD_SIZE = Integer.getInteger("bench.payloadsize", 10240);
    private static final int NUM_KEYS = Integer.getInteger("bench.numkeys", 100);
    private static final boolean USE_TX = Boolean.getBoolean("bench.transactional");
+   private static final long WARMUP_MILLLIS = Long.getLong("bench.warmupMilliseconds", 20000L);
    private static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
    private static final int READER_THREADS = Integer.getInteger("bench.readerThreads", 100);
    private static final int WRITER_THREADS = Integer.getInteger("bench.writerThreads", 70);
@@ -63,6 +64,8 @@ public class Transactional {
    Cache<String, String> c2;
 
    public static void main(String[] args) throws InterruptedException {
+      //print out current Infinispan version:
+      org.infinispan.Version.main(args);
       new Transactional().start();
    }
 
@@ -110,7 +113,7 @@ public class Transactional {
       }
    }
 
-   private void benchmark() throws InterruptedException {
+   private void benchmark() {
       final CountDownLatch startSignal = new CountDownLatch(1);
       ExecutorService e = Executors.newFixedThreadPool(NUM_THREADS);
 
@@ -128,15 +131,27 @@ public class Transactional {
       startSignal.countDown();
       e.shutdown();
       //warmup time, leave the workers alone for some time:
-      Thread.sleep(WARMUP_MILLIS);
+      try {
+         Thread.sleep(WARMUP_MILLLIS);
+      } catch (InterruptedException e1) {
+         System.out.println("Interrupted during warmup. Fast quit..");
+         quitWorkers.set(true);
+         return;
+      }
       //now start measuring:
       numReads.set(0);
       numWrites.set(0);
       long start = System.nanoTime();
-      e.awaitTermination(12, TimeUnit.HOURS);
+      try {
+         e.awaitTermination(12, TimeUnit.HOURS);
+      } catch (InterruptedException e1) {
+         System.out.println("Interrupted. Early exit..");
+         quitWorkers.set(true);
+      }
       long duration = System.nanoTime() - start;
       long reads = numReads.get();
       long writes = numWrites.get();
+      System.out.println("");
       if ( reads+writes == 0) {
          System.out.println("Finished too soon: all work finished before the warmup period was terminated; nothing left to do during the benchmark phase! set an higher number of loops or a lower warmup time.");
       }
@@ -147,6 +162,7 @@ public class Transactional {
          System.out.printf("  Reads / second: %s%n", NF.format((reads * 1000 * 1000 * 1000) / duration ));
          System.out.printf("  Writes/ second: %s%n", NF.format((writes * 1000 * 1000 * 1000) / duration ));
       }
+      System.out.println("");
    }
 
    public static String generateRandomString(int size) {
@@ -208,7 +224,7 @@ public class Transactional {
       protected final void doWork() {
          cache.put(keys[RANDOM.nextInt(keys.length)], payload);
          long writes = numWrites.incrementAndGet();
-         if (writes % 100000 == 0) System.out.println(writes + " write operations processed");
+         if (writes % 100000 == 0) System.out.println(writes + " write operations performed");
       }
    }
 
@@ -221,7 +237,7 @@ public class Transactional {
       protected final void doWork() {
          cache.get(KEYS_R[RANDOM.nextInt(KEYS_R.length)]);
          long reads = numReads.incrementAndGet();
-         if (reads % 1000000 == 0) System.out.println(reads + " read operations processed");
+         if (reads % 1000000 == 0) System.out.println(reads + " read operations performed");
       }
    }
 }

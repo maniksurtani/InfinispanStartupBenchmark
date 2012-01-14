@@ -4,11 +4,11 @@ CFG="-Dlog4j.configuration=bench-log4j.xml"
 CFG="-Dbench.payloadsize=10240 $CFG"
 CFG="-Dbench.numkeys=500 $CFG"
 CFG="-Dbench.transactional=true $CFG"
-CFG="-Dbench.writepercent=10 $CFG"
-CFG="-Dbench.warmup=10000 $CFG"
-CFG="-Dbench.loops=10000000 $CFG"
-CFG="-Dbench.readerThreads=25 $CFG"
-CFG="-Dbench.writerThreads=15 $CFG"
+CFG="-Dbench.readerThreads=10 $CFG"
+CFG="-Dbench.writerThreads=33 $CFG"
+CFG="-Dbench.loops=30000000 $CFG"
+#CFG="-Dbench.loops=30000000 $CFG" < reasonable value for master
+#CFG="-Dbench.loops=1000000 $CFG" < reasonable value for CR3
 
 echo "---- Starting benchmark ---"
 echo ""
