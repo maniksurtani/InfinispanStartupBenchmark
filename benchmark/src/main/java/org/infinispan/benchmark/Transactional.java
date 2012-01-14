@@ -12,6 +12,7 @@ import javax.transaction.TransactionManager;
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
+import java.text.NumberFormat;
 import java.util.Random;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -31,6 +32,7 @@ public class Transactional {
    private static final int READER_THREADS = Integer.getInteger("bench.readerThreads", 100);
    private static final int WRITER_THREADS = Integer.getInteger("bench.writerThreads", 70);
    private static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
+   private static final int WARMUP_MILLIS = Integer.getInteger("bench.warmup", 10000);
 
    private static final int NUM_THREADS = READER_THREADS + WRITER_THREADS;
    static final String[] KEYS_W1 = new String[NUM_KEYS];
@@ -124,8 +126,8 @@ public class Transactional {
 
       startSignal.countDown();
       e.shutdown();
-      //warmup time, leave the workers alone for some 10 seconds:
-      Thread.sleep(10000L);
+      //warmup time, leave the workers alone for some time:
+      Thread.sleep(WARMUP_MILLIS);
       //now start measuring:
       numReads.set(0);
       numWrites.set(0);
@@ -135,13 +137,14 @@ public class Transactional {
       long reads = numReads.get();
       long writes = numWrites.get();
       if ( reads+writes == 0) {
-         System.out.println("Finished too soon: all work finished before the warmup period was terminated; nothing left to do during the benchmark phase! set an higher number of loops.");
+         System.out.println("Finished too soon: all work finished before the warmup period was terminated; nothing left to do during the benchmark phase! set an higher number of loops or a lower warmup time.");
       }
       else {
-         System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", reads + writes, Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), c1.getVersion());
-         System.out.printf("  %s reads and %s writes%n", reads, writes);
-         System.out.printf("  Reads / second: %s%n", (reads * 1000 * 1000 * 1000) / duration );
-         System.out.printf("  Writes/ second: %s%n", (writes * 1000 * 1000 * 1000) / duration );
+         NumberFormat NF = NumberFormat.getInstance();
+         System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", NF.format(reads + writes), Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), c1.getVersion());
+         System.out.printf("  %s reads and %s writes%n", NF.format(reads), NF.format(writes));
+         System.out.printf("  Reads / second: %s%n", NF.format((reads * 1000 * 1000 * 1000) / duration ));
+         System.out.printf("  Writes/ second: %s%n", NF.format((writes * 1000 * 1000 * 1000) / duration ));
       }
    }
 
