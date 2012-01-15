@@ -76,6 +76,7 @@ public class Transactional {
                .concurrencyLevel(NUM_THREADS * 4)
                .transaction()
                .transactionManagerLookup(new DummyTransactionManagerLookup())
+               .syncCommitPhase(false).syncRollbackPhase(false)
                .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
                .sync().replTimeout(60000L)
                .stateRetrieval().fetchInMemoryState(false);
