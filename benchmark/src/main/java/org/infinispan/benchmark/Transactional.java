@@ -1,10 +1,11 @@
 package org.infinispan.benchmark;
 
 import org.infinispan.Cache;
+import org.infinispan.Version;
 import org.infinispan.config.Configuration;
+import org.infinispan.config.Configuration.CacheMode;
 import org.infinispan.config.GlobalConfiguration;
 import org.infinispan.manager.DefaultCacheManager;
-import org.infinispan.manager.EmbeddedCacheManager;
 import org.infinispan.transaction.lookup.DummyTransactionManagerLookup;
 import org.infinispan.util.Util;
 
@@ -26,8 +27,10 @@ public class Transactional {
 
    // ******* CONSTANTS *******
    private static final int PAYLOAD_SIZE = Integer.getInteger("bench.payloadsize", 10240);
+   private static final int NODES = Integer.getInteger("bench.nodes", 4);
    private static final int NUM_KEYS = Integer.getInteger("bench.numkeys", 100);
    private static final boolean USE_TX = Boolean.getBoolean("bench.transactional");
+   private static final boolean USE_DISTRIBUTION = Boolean.getBoolean("bench.dist");
    private static final long WARMUP_MILLLIS = Long.getLong("bench.warmupMilliseconds", 20000L);
    private static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
    private static final int READER_THREADS = Integer.getInteger("bench.readerThreads", 100);
@@ -35,9 +38,8 @@ public class Transactional {
    private static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", Integer.MAX_VALUE);
 
    private static final int NUM_THREADS = READER_THREADS + WRITER_THREADS;
-   static final String[] KEYS_W1 = new String[NUM_KEYS];
-   static final String[] KEYS_W2 = new String[NUM_KEYS];
-   static final String[] KEYS_R = new String[NUM_KEYS*2];
+   private static final String[] KEYS_R = new String[NUM_KEYS*2];
+   private static final String[][] KEYS_W_PERNODE = new String[NODES][NUM_KEYS];
 
    private static final AtomicLong numWrites = new AtomicLong(0);
    private static final AtomicLong numReads = new AtomicLong(0);
@@ -48,19 +50,16 @@ public class Transactional {
       System.setProperty("java.net.preferIPv4Stack", "true");
 
       for (int i = 0; i < NUM_KEYS; i++) {
-         KEYS_W1[i] = "KEY-N1-" + i;
-         KEYS_W2[i] = "KEY-N2-" + i;
+         final String root = "KEY-N"+i+"-NODE";
+         for (int node = 0; node < NODES; node++) {
+            KEYS_W_PERNODE[node][i] = root + node;
+         }
          KEYS_R[i] = "KEY-N1-" + i;
       }
       for (int i = NUM_KEYS; i < NUM_KEYS*2; i++) {
          KEYS_R[i] = "KEY-N2-" + i;
       }
    }
-
-   EmbeddedCacheManager ecm1;
-   EmbeddedCacheManager ecm2;
-   Cache<String, String> c1;
-   Cache<String, String> c2;
 
    public static void main(String[] args) throws InterruptedException {
       //print out current Infinispan version:
@@ -79,52 +78,62 @@ public class Transactional {
                .transaction()
                .transactionManagerLookup(new DummyTransactionManagerLookup())
                .syncCommitPhase(false).syncRollbackPhase(false)
-               .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
+               .clustering().mode(USE_DISTRIBUTION ? CacheMode.DIST_SYNC : CacheMode.REPL_SYNC)
                .sync().replTimeout(60000L)
                .stateRetrieval().fetchInMemoryState(false);
       } else {
          cfg.fluent()
                .locking().lockAcquisitionTimeout(60000L).useLockStriping(false)
                .concurrencyLevel(NUM_THREADS * 4)
-               .clustering().mode(org.infinispan.config.Configuration.CacheMode.REPL_SYNC)
+               .clustering().mode(USE_DISTRIBUTION ? CacheMode.DIST_SYNC : CacheMode.REPL_SYNC)
                .sync().replTimeout(60000L)
                .stateRetrieval().fetchInMemoryState(false);
       }
-
-      ecm1 = new DefaultCacheManager(GlobalConfiguration.getClusteredDefault(), cfg);
-      ecm2 = new DefaultCacheManager(GlobalConfiguration.getClusteredDefault(), cfg);
+      DefaultCacheManager[] cms = new DefaultCacheManager[NODES];
+      for (int i=0; i<NODES; i++) {
+         cms[i] = new DefaultCacheManager(GlobalConfiguration.getClusteredDefault(), cfg);
+      }
 
       try {
-         c1 = ecm1.getCache();
-         c2 = ecm2.getCache();
+         Cache[] caches = new Cache[NODES];
+         for (int i=0; i<NODES; i++) {
+            caches[i] = cms[i].getCache();
+         }
 
-         while (ecm1.getMembers().size() != 2) Thread.sleep(100);
+         while (cms[0].getMembers().size() != NODES) Thread.sleep(100);
 
          // populate cache
-         for (String k : KEYS_W1) c1.put(k, generateRandomString(PAYLOAD_SIZE));
-         for (String k : KEYS_W2) c1.put(k, generateRandomString(PAYLOAD_SIZE));
+         for (int node=0; node<NODES; node++) {
+            final Cache cache = caches[node];
+            for (int i = 0; i < NUM_KEYS; i++) {
+               cache.put(KEYS_W_PERNODE[node][i], generateRandomString(PAYLOAD_SIZE));
+            }
+         }
 
          // Now the benchmark
-         benchmark();
+         benchmark(caches);
       } finally {
-         ecm1.stop();
-         ecm2.stop();
+         for (int i=0; i<NODES; i++) {
+            DefaultCacheManager cacheManager = cms[i];
+            if (cacheManager!=null)
+               cacheManager.stop();
+         }
       }
    }
 
-   private void benchmark() {
+   private void benchmark(Cache[] caches) {
       final CountDownLatch startSignal = new CountDownLatch(1);
       ExecutorService e = Executors.newFixedThreadPool(NUM_THREADS);
 
       for (int i = 0; i < WRITER_THREADS; i++) {
          // Add a writer
-         boolean useC1 = RANDOM.nextBoolean();
-         e.submit(new Writer(useC1 ? c1 : c2, startSignal, useC1 ? KEYS_W1 : KEYS_W2));
+         int nodeIndex = RANDOM.nextInt(NODES);
+         e.submit(new Writer(caches[nodeIndex], startSignal, KEYS_W_PERNODE[nodeIndex]));
       }
       for (int i = 0; i < READER_THREADS; i++) {
-       //Add a reader
-         boolean useC1 = RANDOM.nextBoolean();
-         e.submit(new Reader(useC1 ? c1 : c2, startSignal));
+         //Add a reader
+         int nodeIndex = RANDOM.nextInt(NODES);
+         e.submit(new Reader(caches[nodeIndex], startSignal));
       }
 
       startSignal.countDown();
@@ -156,7 +165,7 @@ public class Transactional {
       }
       else {
          NumberFormat NF = NumberFormat.getInstance();
-         System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", NF.format(reads + writes), Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), c1.getVersion());
+         System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", NF.format(reads + writes), Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), Version.printVersion());
          System.out.printf("  %s reads and %s writes%n", NF.format(reads), NF.format(writes));
          System.out.printf("  Reads / second: %s%n", NF.format((reads * 1000 * 1000 * 1000) / duration ));
          System.out.printf("  Writes/ second: %s%n", NF.format((writes * 1000 * 1000 * 1000) / duration ));
