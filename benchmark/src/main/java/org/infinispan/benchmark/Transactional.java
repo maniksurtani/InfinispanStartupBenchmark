@@ -32,8 +32,7 @@ public class Transactional {
    private static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
    private static final int READER_THREADS = Integer.getInteger("bench.readerThreads", 100);
    private static final int WRITER_THREADS = Integer.getInteger("bench.writerThreads", 70);
-   private static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", 1000000);
-   private static final int WARMUP_MILLIS = Integer.getInteger("bench.warmup", 10000);
+   private static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", Integer.MAX_VALUE);
 
    private static final int NUM_THREADS = READER_THREADS + WRITER_THREADS;
    static final String[] KEYS_W1 = new String[NUM_KEYS];
