@@ -4,8 +4,11 @@ import org.infinispan.Cache;
 import org.infinispan.Version;
 import org.infinispan.config.Configuration;
 import org.infinispan.config.Configuration.CacheMode;
+import org.infinispan.config.FluentConfiguration.ClusteringConfig;
 import org.infinispan.config.GlobalConfiguration;
+import org.infinispan.eviction.EvictionStrategy;
 import org.infinispan.manager.DefaultCacheManager;
+import org.infinispan.remoting.transport.jgroups.JGroupsTransport;
 import org.infinispan.transaction.lookup.DummyTransactionManagerLookup;
 import org.infinispan.util.Util;
 
@@ -27,15 +30,18 @@ public class Transactional {
 
    // ******* CONSTANTS *******
    private static final int PAYLOAD_SIZE = Integer.getInteger("bench.payloadsize", 10240);
-   private static final int NODES = Integer.getInteger("bench.nodes", 4);
-   private static final int NUM_KEYS = Integer.getInteger("bench.numkeys", 100);
+   private static final int NODES = Integer.getInteger("bench.nodes", 8);
+   private static final int NUM_KEYS = Integer.getInteger("bench.numkeys", 500);
    private static final boolean USE_TX = Boolean.getBoolean("bench.transactional");
    private static final boolean USE_DISTRIBUTION = Boolean.getBoolean("bench.dist");
+   private static final boolean L1_ENABLED = Boolean.getBoolean("bench.l1Enabled");
+   private static final int NUM_VNODES = Integer.getInteger("bench.vnodes", 1000);
    private static final long WARMUP_MILLLIS = Long.getLong("bench.warmupMilliseconds", 20000L);
    private static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
    private static final int READER_THREADS = Integer.getInteger("bench.readerThreads", 100);
    private static final int WRITER_THREADS = Integer.getInteger("bench.writerThreads", 70);
    private static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", Integer.MAX_VALUE);
+   private static final String JGROUPS_CONF = System.getProperty("bench.jgroups_conf", "bench-jgroups.xml");
 
    private static final int NUM_THREADS = READER_THREADS + WRITER_THREADS;
    private static final String[] KEYS_R = new String[NUM_KEYS*2];
@@ -69,29 +75,33 @@ public class Transactional {
 
    public void start() throws InterruptedException {
       // Using deprecated config API to be compatible with Infinispan 5.1 as well as 5.0
+      GlobalConfiguration gc = new GlobalConfiguration();
+      gc.setTransportClass(JGroupsTransport.class.getName());
+      gc.getTransportProperties().setProperty("configurationFile", JGROUPS_CONF);
+      
       Configuration cfg = new Configuration();
 
       if (USE_TX) {
-         cfg.fluent()
+         ClusteringConfig mode = cfg.fluent()
                .locking().lockAcquisitionTimeout(60000L).useLockStriping(false)
                .concurrencyLevel(NUM_THREADS * 4)
+               .eviction().strategy(EvictionStrategy.NONE)
                .transaction()
                .transactionManagerLookup(new DummyTransactionManagerLookup())
                .syncCommitPhase(false).syncRollbackPhase(false)
-               .clustering().mode(USE_DISTRIBUTION ? CacheMode.DIST_SYNC : CacheMode.REPL_SYNC)
-               .sync().replTimeout(60000L)
-               .stateRetrieval().fetchInMemoryState(false);
+               .clustering();
+         applyClusteringOptions(mode);
       } else {
-         cfg.fluent()
+         ClusteringConfig mode =cfg.fluent()
                .locking().lockAcquisitionTimeout(60000L).useLockStriping(false)
                .concurrencyLevel(NUM_THREADS * 4)
-               .clustering().mode(USE_DISTRIBUTION ? CacheMode.DIST_SYNC : CacheMode.REPL_SYNC)
-               .sync().replTimeout(60000L)
-               .stateRetrieval().fetchInMemoryState(false);
+               .eviction().strategy(EvictionStrategy.NONE)
+               .clustering().mode(USE_DISTRIBUTION ? CacheMode.DIST_SYNC : CacheMode.REPL_SYNC);
+         applyClusteringOptions(mode);
       }
       DefaultCacheManager[] cms = new DefaultCacheManager[NODES];
       for (int i=0; i<NODES; i++) {
-         cms[i] = new DefaultCacheManager(GlobalConfiguration.getClusteredDefault(), cfg);
+         cms[i] = new DefaultCacheManager(gc, cfg);
       }
 
       try {
@@ -146,6 +156,7 @@ public class Transactional {
          quitWorkers.set(true);
          return;
       }
+      System.out.printf("%n\tWarmup finished: resetting all counters to zero.%n%n");
       //now start measuring:
       numReads.set(0);
       numWrites.set(0);
@@ -159,8 +170,7 @@ public class Transactional {
       long duration = System.nanoTime() - start;
       long reads = numReads.get();
       long writes = numWrites.get();
-      System.out.println("");
-      if ( reads+writes == 0) {
+      if (reads+writes == 0) {
          System.out.println("Finished too soon: all work finished before the warmup period was terminated; nothing left to do during the benchmark phase! set an higher number of loops or a lower warmup time.");
       }
       else {
@@ -247,6 +257,17 @@ public class Transactional {
          long reads = numReads.incrementAndGet();
          if (reads % 1000000 == 0) System.out.println(reads + " read operations performed");
       }
+   }
+
+   private static void applyClusteringOptions(ClusteringConfig mode) {
+      mode.mode(USE_DISTRIBUTION ? CacheMode.DIST_SYNC : CacheMode.REPL_SYNC);
+      if (! L1_ENABLED && USE_DISTRIBUTION)
+         mode.l1().disable();
+      if (USE_DISTRIBUTION) {
+         mode.hash().numVirtualNodes(NUM_VNODES);
+      }
+      mode.sync().replTimeout(60000L)
+         .stateRetrieval().fetchInMemoryState(false);
    }
 }
 
