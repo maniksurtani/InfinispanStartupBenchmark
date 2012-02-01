@@ -6,10 +6,13 @@ CFG="-Dbench.payloadsize=120 $CFG"
 CFG="-Dbench.numkeys=1500 $CFG"
 CFG="-Dbench.transactional=true $CFG"
 CFG="-Dbench.dist=true $CFG"
-CFG="-Dbench.nodes=8 $CFG"
+CFG="-Dbench.nodes=12 $CFG"
 CFG="-Dbench.readerThreads=25 $CFG"
 CFG="-Dbench.writerThreads=15 $CFG"
 CFG="-Dbench.loops=10000000 $CFG"
+
+#To use default Infinispan UDP configuration for JGroups (instead of the benchmark included one, bench-jgroups.xml):
+CFG="-Dbench.jgroups_conf=jgroups-udp.xml $CFG"
 
 MAVEN_OPTS=""
 MAVEN_OPTS="$MAVEN_OPTS -Xmx2G -Xms2G -XX:MaxPermSize=128M -XX:+HeapDumpOnOutOfMemoryError -Xss512k -XX:HeapDumpPath=/tmp/java_heap"
@@ -42,8 +45,9 @@ echo ""
 echo ""
 
 #versions="infinispan-5.1.CR infinispan-5.1.SNAPSHOT"
-versions="infinispan-5.0 infinispan-5.1.CR infinispan-5.1.SNAPSHOT"
-#versions="infinispan-5.1.SNAPSHOT"
+#versions="infinispan-5.0 infinispan-5.1.CR infinispan-5.1.SNAPSHOT"
+versions="infinispan-5.1.SNAPSHOT"
+#versions="infinispan-5.0"
 #versions="infinispan-5.1.CR"
 for inf in $versions; do
   cd $inf
