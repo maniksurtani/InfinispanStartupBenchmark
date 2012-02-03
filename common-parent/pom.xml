@@ -10,6 +10,8 @@
 
    <properties>
       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+      <infinispanVersion>5.1.1.FINAL</infinispanVersion>
+      <benchName>org.infinispan.benchmark.Transactional</benchName>
    </properties>
 
    <dependencies>

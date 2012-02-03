@@ -12,10 +12,5 @@
    <modules>
       <module>common-parent</module>
       <module>benchmark</module>
-      <module>infinispan-4.2</module>
-      <module>infinispan-5.0</module>
-      <module>infinispan-5.1.CR</module>
-      <module>infinispan-5.1.SNAPSHOT</module>
-      <module>infinispan-5.2.SNAPSHOT</module>
    </modules>
 </project>

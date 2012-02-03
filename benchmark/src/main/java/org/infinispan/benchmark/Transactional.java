@@ -11,6 +11,8 @@ import org.infinispan.manager.DefaultCacheManager;
 import org.infinispan.remoting.transport.jgroups.JGroupsTransport;
 import org.infinispan.transaction.lookup.DummyTransactionManagerLookup;
 import org.infinispan.util.Util;
+import org.infinispan.util.logging.Log;
+import org.infinispan.util.logging.LogFactory;
 
 import javax.transaction.TransactionManager;
 import javax.transaction.xa.XAException;
@@ -18,6 +20,8 @@ import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
 import java.text.NumberFormat;
 import java.util.Random;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -35,12 +39,13 @@ public class Transactional {
    private static final boolean USE_TX = Boolean.getBoolean("bench.transactional");
    private static final boolean USE_DISTRIBUTION = Boolean.getBoolean("bench.dist");
    private static final boolean L1_ENABLED = Boolean.getBoolean("bench.l1Enabled");
-   private static final int NUM_VNODES = Integer.getInteger("bench.vnodes", 1000);
-   private static final long WARMUP_MILLLIS = Long.getLong("bench.warmupMilliseconds", 20000L);
+   private static final boolean EXTRA_QUIET = Boolean.getBoolean("bench.extraQuiet");
+   private static final int NUM_VNODES = Integer.getInteger("bench.vnodes", 48);
+   private static final int WARMUP_MINUTES = Integer.getInteger("bench.warmupMinutes", 20);
+   private static final int TESTTIME_MINUTES = Integer.getInteger("bench.durationMinutes", 40);
    private static final Random RANDOM = new Random(Long.getLong("bench.randomSeed", 173)); //pick a number, needs to be the same for all benchmarked versions!
    private static final int READER_THREADS = Integer.getInteger("bench.readerThreads", 100);
    private static final int WRITER_THREADS = Integer.getInteger("bench.writerThreads", 70);
-   private static final int BENCHMARK_LOOPS = Integer.getInteger("bench.loops", Integer.MAX_VALUE);
    private static final String JGROUPS_CONF = System.getProperty("bench.jgroups_conf", "bench-jgroups.xml");
 
    private static final int NUM_THREADS = READER_THREADS + WRITER_THREADS;
@@ -50,6 +55,23 @@ public class Transactional {
    private static final AtomicLong numWrites = new AtomicLong(0);
    private static final AtomicLong numReads = new AtomicLong(0);
    private static final AtomicBoolean quitWorkers = new AtomicBoolean(false);
+   private final CountDownLatch endSignal = new CountDownLatch(1);
+
+   private static final Log log = LogFactory.getLog(Transactional.class);
+   private static final boolean trace = log.isTraceEnabled();
+   
+   private static final Timer timer = new Timer( "TestProgressMonitor", true );
+   private static final NumberFormat NF = NumberFormat.getInstance();//Not threadsafe - one thread only using it
+   
+   private static void printConfiguration() {
+      System.out.println("Payload size:\t" + PAYLOAD_SIZE);
+      System.out.println("Number of nodes:\t" + NODES);
+      System.out.println("Using transactions:\t" + USE_TX);
+      System.out.println("Using distribution:\t" + USE_DISTRIBUTION);
+      System.out.println("Number of Virtual nodes:\t" + NUM_VNODES);
+      System.out.println("Number of Writing threads:\t" + WRITER_THREADS);
+      System.out.println("Number of Reading threads:\t" + READER_THREADS);
+   }
 
    static {
       System.setProperty("jgroups.bind_addr", "127.0.0.1");
@@ -69,7 +91,10 @@ public class Transactional {
 
    public static void main(String[] args) throws InterruptedException {
       //print out current Infinispan version:
-      org.infinispan.Version.main(args);
+      if (!EXTRA_QUIET) {
+         org.infinispan.Version.main(args);
+         printConfiguration();
+      }
       new Transactional().start();
    }
 
@@ -125,7 +150,7 @@ public class Transactional {
       } finally {
          for (int i=0; i<NODES; i++) {
             DefaultCacheManager cacheManager = cms[i];
-            if (cacheManager!=null)
+            if (cacheManager != null)
                cacheManager.stop();
          }
       }
@@ -148,39 +173,22 @@ public class Transactional {
 
       startSignal.countDown();
       e.shutdown();
-      //warmup time, leave the workers alone for some time:
+      System.out.println("STARTING");
+
+      timer.schedule( new ProgressTask(), 10000, 10000 );
       try {
-         Thread.sleep(WARMUP_MILLLIS);
+         endSignal.await();
       } catch (InterruptedException e1) {
-         System.out.println("Interrupted during warmup. Fast quit..");
-         quitWorkers.set(true);
-         return;
+         //main thread quitting, no need to reset interruption
       }
-      System.out.printf("%n\tWarmup finished: resetting all counters to zero.%n%n");
-      //now start measuring:
-      numReads.set(0);
-      numWrites.set(0);
-      long start = System.nanoTime();
-      try {
-         e.awaitTermination(12, TimeUnit.HOURS);
-      } catch (InterruptedException e1) {
-         System.out.println("Interrupted. Early exit..");
-         quitWorkers.set(true);
-      }
-      long duration = System.nanoTime() - start;
-      long reads = numReads.get();
-      long writes = numWrites.get();
-      if (reads+writes == 0) {
-         System.out.println("Finished too soon: all work finished before the warmup period was terminated; nothing left to do during the benchmark phase! set an higher number of loops or a lower warmup time.");
-      }
-      else {
-         NumberFormat NF = NumberFormat.getInstance();
-         System.out.printf("Done %s " + (USE_TX ? "transactional " : "") + "operations in %s using %s%n", NF.format(reads + writes), Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS), Version.printVersion());
-         System.out.printf("  %s reads and %s writes%n", NF.format(reads), NF.format(writes));
-         System.out.printf("  Reads / second: %s%n", NF.format((reads * 1000 * 1000 * 1000) / duration ));
-         System.out.printf("  Writes/ second: %s%n", NF.format((writes * 1000 * 1000 * 1000) / duration ));
-      }
-      System.out.println("");
+      quitWorkers.set(true);
+   }
+
+   private void printStats(long duration, long reads, long writes) {
+      System.out.printf(Version.VERSION + ": done %s " + (USE_TX ? "transactional " : "") + "operations in %s", NF.format(reads + writes), Util.prettyPrintTime(duration, TimeUnit.NANOSECONDS));
+      System.out.printf("  %s reads and %s writes%n", NF.format(reads), NF.format(writes));
+      System.out.printf("  Reads / second: %s%n", NF.format((reads * 1000 * 1000 * 1000) / duration ));
+      System.out.printf("  Writes/ second: %s%n", NF.format((writes * 1000 * 1000 * 1000) / duration ));
    }
 
    public static String generateRandomString(int size) {
@@ -204,10 +212,8 @@ public class Transactional {
       @Override
       public final Void call() throws Exception {
          startSignal.await();
-         int loop = 0;
          try {
             do {
-               loop++;
                if (USE_TX) {
                   tm.begin();
                   // Force 2PC
@@ -217,9 +223,19 @@ public class Transactional {
                   doWork();
                   if (USE_TX) tm.commit();
                } catch (Exception e) {
-                  if (USE_TX) tm.rollback();
+                  try {
+                     if (USE_TX) tm.rollback();
+                     log.error(e);
+                  }
+                  finally {
+                     boolean newErrorToReport = quitWorkers.compareAndSet(false, true);
+                     if (newErrorToReport) System.out.println("Error - terminating");
+                  }
                }
-            } while (BENCHMARK_LOOPS != loop && ! quitWorkers.get());
+            } while (! quitWorkers.get());
+         }
+         catch (Exception e) {
+            log.error(e);
          }
          finally {
             //when one worked finishes, the others should quite as well to keep the measured situation constant.
@@ -242,7 +258,9 @@ public class Transactional {
       protected final void doWork() {
          cache.put(keys[RANDOM.nextInt(keys.length)], payload);
          long writes = numWrites.incrementAndGet();
-         if (writes % 100000 == 0) System.out.println(writes + " write operations performed");
+         if (trace) {
+            log.trace(writes + " write operations performed");
+         }
       }
    }
 
@@ -255,7 +273,9 @@ public class Transactional {
       protected final void doWork() {
          cache.get(KEYS_R[RANDOM.nextInt(KEYS_R.length)]);
          long reads = numReads.incrementAndGet();
-         if (reads % 1000000 == 0) System.out.println(reads + " read operations performed");
+         if (trace) {
+            log.trace(reads + " read operations performed");
+         }
       }
    }
 
@@ -269,6 +289,48 @@ public class Transactional {
       mode.sync().replTimeout(60000L)
          .stateRetrieval().fetchInMemoryState(false);
    }
+
+   private class ProgressTask extends TimerTask {
+
+      private boolean warmup = true;
+      private long startTime = System.nanoTime(); // starts with an approximation - it's warmup anyway
+      private int loop = 0;
+      private long lastSeenReads = 0;
+      private long lastSeenWrites = 0;
+
+      public void run() {
+         loop++;
+         final long duration = System.nanoTime() - startTime;
+         final long reads = numReads.get();
+         final long writes = numWrites.get();
+         if ( (lastSeenReads!=0 && lastSeenReads==reads) || (lastSeenWrites!=0 && lastSeenWrites==writes) ) {
+            System.out.println("No progress made! aborting");
+            endSignal.countDown();
+         }
+         else {
+            lastSeenReads = reads;
+            lastSeenWrites = writes;
+         }
+         if (!EXTRA_QUIET)
+            printStats(duration, reads, writes);
+         if (warmup && (loop / 6) >= WARMUP_MINUTES) {
+            System.out.println("WARMUP FINISHED - RESETTING STATS");
+            startTime = System.nanoTime();
+            numReads.set(0);
+            numWrites.set(0);
+            warmup = false;
+            loop=0;
+         }
+         else if (!warmup && (loop / 6) >= TESTTIME_MINUTES) {
+            System.out.println("TEST FINISHED");
+            endSignal.countDown();
+            printConfiguration();
+            printStats(duration, reads, writes);
+         }
+      }
+
+   }
+
 }
 
 class XAResourceAdapter implements XAResource {
