@@ -46,7 +46,7 @@ echo ""
 
 #versions="infinispan-5.1.CR infinispan-5.1.SNAPSHOT"
 #versions="infinispan-5.0 infinispan-5.1.CR infinispan-5.1.SNAPSHOT"
-versions="infinispan-5.1.SNAPSHOT"
+versions="infinispan-5.1.SNAPSHOT infinispan-5.2.SNAPSHOT"
 #versions="infinispan-5.0"
 #versions="infinispan-5.1.CR"
 for inf in $versions; do
