@@ -5,7 +5,7 @@
    <modelVersion>4.0.0</modelVersion>
 
    <groupId>org.infinispan.benchmark</groupId>
-   <artifactId>startup-benchmark-fwk-5.1.SNAPSHOT</artifactId>
+   <artifactId>startup-benchmark-fwk-5.2.SNAPSHOT</artifactId>
    <version>1.0</version>
    <parent>
       <groupId>org.infinispan.benchmark</groupId>

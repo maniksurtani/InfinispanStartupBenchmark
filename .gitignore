@@ -20,6 +20,8 @@ test-output
 classes
 # log files
 *.log
+*.log.*
+out.txt
 # vim files
 *.swp
 # testsuite generated files/folders
